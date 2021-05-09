@@ -14,7 +14,7 @@ GY-63:
 #include <MS5611.h>
 MS5611 ms5611;
 double referencePressure;
-long max_Pressure = 0;
+long max_Pressure = 0; // Pressure goes down as you go up, so this should be min pressure... but readability
 float max_Altitude = 0;
 double max_Temprature = 0;
 
@@ -70,19 +70,13 @@ void loop()
 	Serial.print(", relativeAltitude:");
 	Serial.println(relative_Altitude);
 
-	if (max_Pressure < real_Pressure)
-	{
-		max_Pressure = real_Pressure;
-	}
-	if (max_Altitude < absolute_Altitude)
-	{
-		max_Altitude = relative_Altitude;
-	}
-	if (max_Temprature < real_Temperature)
+	if (max_Altitude < relative_Altitude)
 	{
 		max_Temprature = real_Temperature;
+		max_Pressure = real_Pressure;
+		max_Altitude = relative_Altitude;
 	}
-	if (EEPROM_Lock == 0 && millis() >= 120000 && abs(max_Altitude - relative_Altitude) < 10) // if nothing has been written before ; if after 120 seconds ; if within 10 meters of starting height.
+	if (EEPROM_Lock == 0 && millis() >= 120000 && abs(0 - relative_Altitude) < 10) // if nothing has been written before ; if after 120 seconds ; if within 10 meters of starting height.
 	{
 		String data = String(millis()) + String(max_Pressure) + "," + String(max_Altitude) + "," + String(max_Temprature);
 		EEPROM_Write(data);
@@ -93,7 +87,7 @@ void loop()
 
 void EEPROM_Write(String data)
 {
-	byte len = data.length();						 // Get length of data
+	byte len = data.length();// Get length of data
 	for (int i = 0; i < len && i < EEPROM_Size; i++) //write up to string length or EEPROM size(shouldnt ever hit this point, but good precatution)
 	{
 		EEPROM.write(i, data[i]);

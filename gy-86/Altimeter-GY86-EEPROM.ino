@@ -71,19 +71,13 @@ void loop()
 	Serial.print(", relativeAltitude:");
 	Serial.println(relative_Altitude);
 
-	if (max_Pressure < real_Pressure)
-	{
-		max_Pressure = real_Pressure;
-	}
-	if (max_Altitude < absolute_Altitude)
-	{
-		max_Altitude = relative_Altitude;
-	}
-	if (max_Temprature < real_Temperature)
+	if (max_Altitude < relative_Altitude)
 	{
 		max_Temprature = real_Temperature;
+		max_Pressure = real_Pressure;
+		max_Altitude = relative_Altitude;
 	}
-	if (EEPROM_Lock == 0 && millis() >= 120000 && abs(max_Altitude - relative_Altitude) < 10) // if nothing has been written before ; if after 120 seconds ; if within 10 meters of starting height.
+	if (EEPROM_Lock == 0 && millis() >= 120000 && abs(0 - relative_Altitude) < 10) // if nothing has been written before ; if after 120 seconds ; if within 10 meters of starting height.
 	{
 		String data = String(millis()) + String(max_Pressure) + "," + String(max_Altitude) + "," + String(max_Temprature);
 		EEPROM_Write(data);
