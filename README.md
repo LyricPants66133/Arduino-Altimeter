@@ -1,5 +1,5 @@
 # Arduino-Altimeter
-A collection of simple Arduino scripts to record Altimeter data(among other things) using an Arduino. This was created with model rocketry in mind, especially after struggling to find specific information on creating compact and light Arduino Altimeters.
+A collection of simple Arduino scripts to record Altimeter data (among other things) using an Arduino. This was created with model rocketry in mind, especially after struggling to find specific information on creating compact and light Arduino Altimeters.
 
 # Materials / Supplies
 
@@ -12,7 +12,22 @@ The materials you will need to create this depends on what you want to make. How
     - NOTE: any Micro SD Card will work; however, it must be [formatted for FAT16](https://aesmit.org/2020/05/24/format-sd-card-fat16-on-windows-10/)
 - [A 7V battery](https://www.amazon.com/gp/product/B016ZM3CVA/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1)
 - Hookup Wires
-- Soldering iron(and knowledge on how to use one)
+- Soldering iron (and knowledge on how to use one)
+
+# Library Requirements
+
+GY-63:
+- Wire (Comes Preinstalled with Arduino)
+- [Arduino-MS5611](https://github.com/jarzebski/Arduino-MS5611)
+
+GY-86:
+- Wire (Comes Preinstalled with Arduino)
+- [I2CDev](https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/I2Cdev)
+- [MPU6050](https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050)
+
+SD Card:
+- SD (Comes Preinstalled with Arduino)
+- SPI (Comes Preinstalled with Arduino)
 
 # Wiring
 

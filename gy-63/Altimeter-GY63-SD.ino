@@ -20,23 +20,17 @@ SD READER:
 */
 
 // Setup sensor libraries & variables for each
+#include <Wire.h>
 #include <MS5611.h>
 MS5611 ms5611;
-double referencePressure;
+double reference_Pressure;
 
 #include <SPI.h>
 #include <SD.h>
-const int chipSelect = 4; // this defines the CS (chip select) pin
+const int chip_Select = 4; // this defines the CS (chip select) pin
 
 void setup()
 {
-    // join I2C bus (I2Cdev library doesn't do this automatically)
-    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-        Wire.begin();
-    #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
-        Fastwire::setup(400, true);
-    #endif
-
     Serial.begin(9600); //baudrate 9600 because value is standard
 
     // Initialize MS5611 sensor
@@ -45,55 +39,54 @@ void setup()
 
     //Initialize SD Card
     Serial.print("Initializing SD card...");
-    Serial.println(!SD.begin(chipSelect) ? "SD Card connection successful" : "SD Card connection failed");
+    Serial.println(!SD.begin(chip_Select) ? "SD Card connection successful" : "SD Card connection failed");
 
     // Get reference pressure for relative altitude
-    referencePressure = ms5611.readPressure();
+    reference_Pressure = ms5611.readPressure();
 }
 
 void loop()
 {
-    // Read true temperature & Pressure
-    double realTemperature = ms5611.readTemperature();
-    long realPressure = ms5611.readPressure();
     // Calculate altitude
-    float absoluteAltitude = ms5611.getAltitude(realPressure);
-    float relativeAltitude = ms5611.getAltitude(realPressure, referencePressure);
+    float absolute_Altitude = ms5611.getAltitude(real_Pressure);
+    float relative_Altitude = ms5611.getAltitude(real_Pressure, reference_Pressure);
 
     // Print out all values
     Serial.println("--");
 
     Serial.print("realTemp: ");
-    Serial.print(realTemperature);
+    Serial.print(real_Temperature);
     Serial.println(" *C");
 
-    Serial.print("realPressure: ");
-    Serial.print(realPressure);
+    Serial.print("real_Pressure: ");
+    Serial.print(real_Pressure);
     Serial.println(" Pa");
-    
+
     Serial.print("absoluteAlt: ");
-    Serial.print(absoluteAltitude);
+    Serial.print(absolute_Altitude);
     Serial.println(" m");
 
     Serial.print("relativeAlt: ");
-    Serial.print(relativeAltitude);
+    Serial.print(relative_Altitude);
     Serial.println(" m");
 
-    String dataString = String(millis()) + ", " + String(realTemperature) + ", " + String(realPressure) + ", " + String(absoluteAltitude) + ", "
-        + String(relativeAltitude);
-    SD_Write(dataString);
-    
+    String data = String(millis()) + ", " + String(real_Temperature) + ", " + String(real_Pressure) + ", " + String(absolute_Altitude) + ", " + String(relative_Altitude);
+    SD_Write(data);
+
     delay(100);
 }
 
-void SD_Write(String dataString){
+void SD_Write(String data)
+{
     File dataFile = SD.open("datalog.txt", FILE_WRITE);
 
-    if (dataFile) { // if the file is available, write to it:
-        dataFile.println(dataString);
+    if (dataFile)
+    { // if the file is available, write to it:
+        dataFile.println(data);
         dataFile.close();
-
-    } else { // if the file isn't open, pop up an error:
+    }
+    else
+    { // if the file isn't open, pop up an error:
         Serial.println("error opening datalog.txt");
     }
 }

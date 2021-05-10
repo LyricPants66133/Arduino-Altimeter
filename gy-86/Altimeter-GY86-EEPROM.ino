@@ -14,10 +14,10 @@ GY-86:
 #include <Wire.h>
 #include <MS5611.h>
 MS5611 ms5611;
-double referencePressure;
-long max_Pressure = 0;
-float max_Altitude = 0;
-double max_Temprature = 0;
+double reference_Pressure;
+long max_Alt_Pressure;
+float max_Altitude;
+double max_Alt_Temperature;
 
 #include <EEPROM.h>
 int EEPROM_Data = 0;
@@ -33,7 +33,7 @@ void setup()
 	Serial.println(ms5611.begin(MS5611_ULTRA_HIGH_RES) ? "MS5611 connection successful" : "MS5611 connection failed");
 
 	// Get reference pressure for relative altitude
-	referencePressure = ms5611.readPressure();
+	reference_Pressure = ms5611.readPressure();
 
 	Serial.println("The previous text saved in the EEPROM was: ");
 	for (int i = 0; i < EEPROM_Size; i++) // Read EEPROM
@@ -50,16 +50,13 @@ void setup()
 
 void loop()
 {
-	// Read raw values
-	uint32_t rawTemp = ms5611.readRawTemperature();
-	uint32_t rawPressure = ms5611.readRawPressure();
 	// Read true temperature & Pressure
 	double real_Temperature = ms5611.readTemperature();
 	long real_Pressure = ms5611.readPressure();
 
 	// Calculate altitude
 	float absolute_Altitude = ms5611.getAltitude(real_Pressure);
-	float relative_Altitude = ms5611.getAltitude(real_Pressure, referencePressure);
+	float relative_Altitude = ms5611.getAltitude(real_Pressure, reference_Pressure);
 
 	Serial.print(millis());
 	Serial.print(", real_Pressure:");
@@ -71,15 +68,16 @@ void loop()
 	Serial.print(", relativeAltitude:");
 	Serial.println(relative_Altitude);
 
-	if (max_Altitude < relative_Altitude)
+	if (max_Altitude < relative_Altitude) // Set Maximum Values
 	{
-		max_Temprature = real_Temperature;
-		max_Pressure = real_Pressure;
+		millis_Max_Alt = millis();
+		max_Alt_Temperature = real_Temperature;
+		max_Alt_Pressure = real_Pressure;
 		max_Altitude = relative_Altitude;
 	}
-	if (EEPROM_Lock == 0 && millis() >= 120000 && abs(0 - relative_Altitude) < 10) // if nothing has been written before ; if after 120 seconds ; if within 10 meters of starting height.
+	if (EEPROM_Lock == 0 && millis() >= 120000 && abs(relative_Altitude) < 10) // if nothing has been written before ; if after 120 seconds ; if within 10 meters of starting height.
 	{
-		String data = String(millis()) + String(max_Pressure) + "," + String(max_Altitude) + "," + String(max_Temprature);
+		String data = String(millis_Max_Alt) + String(max_Alt_Pressure) + "," + String(max_Altitude) + "," + String(max_Alt_Temperature);
 		EEPROM_Write(data);
 	}
 
