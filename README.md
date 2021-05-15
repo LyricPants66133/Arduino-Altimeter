@@ -78,20 +78,20 @@ GY-63:
 
 GY-86:
 
-	VCC_IN	:	5V
-	3.3V	:	UNUSED
+	VCC_IN		:	5V
+	3.3V		:	UNUSED
 	GND		:	GND
 	SCL		:	A5
 	SDA		:	A4
-	FSYNC	:	UNUSED
-	INTA	:	2
-	DRDY	:	UNUSED
+	FSYNC		:	UNUSED
+	INTA		:	2
+	DRDY		:	UNUSED
 
 SD READER:
 
 	GND		:	GND
 	VCC		:	5V
-	MISO	:	12
-	MOSI	:	11
+	MISO		:	12
+	MOSI		:	11
 	SCK		:	13
 	CS		:	4
