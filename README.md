@@ -1,5 +1,6 @@
 # Arduino-Altimeter
-A collection of simple Arduino scripts to record Altimeter data (among other things) using an Arduino. This was created with model rocketry in mind, especially after struggling to find specific information on creating compact and light Arduino Altimeters.
+
+A customizable Arduino script to record Altimeter data (among other things) using an Arduino, a sensor, and an optional SD card. This was created with model rocketry in mind, especially after struggling to find specific information on creating compact and light Arduino Altimeters.
 
 # Materials / Supplies
 
@@ -7,33 +8,16 @@ The materials you will need to create this depends on what you want to make. How
 
 - An [Arduino Nano](https://www.amazon.com/gp/product/B0713XK923/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1)
 - A Sensor that can read barometric pressure(MS5611)
-	- I recommend either a GY-63 or GY-86 sensor as they are the ones I have specifically written code for. However, any sensor with an MS5611 should work.
+	- GY-63 and GY-86 are currentlty the only two tested sensors, however there should be no reason a sensor with an MS5611 wouldn't work.
 - (OPTIONAL) [Micro SD Card Reader](https://www.amazon.com/gp/product/B07BJ2P6X6/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1) and Micro SD Card
 	- NOTE: any Micro SD Card will work; however, it must be [formatted for FAT16](https://aesmit.org/2020/05/24/format-sd-card-fat16-on-windows-10/)
-- [A 7V battery](https://www.amazon.com/gp/product/B016ZM3CVA/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1)
+- [A 7V battery](https://www.amazon.com/gp/product/B016ZM3CVA/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1) to power to Arduino
 - Hookup Wires
 - Soldering iron (and knowledge on how to use one)
 
-# Library Requirements
-
-[How to install Libraries](https://www.arduino.cc/en/guide/libraries)
-
-GY-63:
-- Wire (Comes Preinstalled with Arduino)
-- [Arduino-MS5611](https://github.com/jarzebski/Arduino-MS5611)
-
-GY-86:
-- Wire (Comes Preinstalled with Arduino)
-- [I2CDev](https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/I2Cdev)
-- [MPU6050](https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050)
-
-SD Card:
-- SD (Comes Preinstalled with Arduino)
-- SPI (Comes Preinstalled with Arduino)
-
 # EEPROM vs Micro SD Card
 
-EEPROM or Electrically Erasable Programmable Read-Only Memory, is the only permanent(meaning will be kept after power shutoff) memory in the Arduino. As the name states, its read only, howwver, it actually has 100,000 read/write cycles before it becomes unstable and unusable. For our intents and purposes, this is plenty, as we are only writing 2 per launch(one at the beggining to clear the memory, another at the end to write the highest Altitude). A downside however is that we only have 1KB(Arduino Nano; Varies from model to model) of memory, meaning we cant data log the whole flight, only the most important info. This is where the Micro SD Card comes in. It allows you to data log the entire flight(with 4GB+ of storage), however requring an entirely seperate unit, therefore adding very noticable weight to smaller rockets.(In larger rockets a couple grams dont matter as much). So which one to pick?
+EEPROM or Electrically Erasable Programmable Read-Only Memory is the only permanent (i.e., not erased after power shutoff) memory in the Arduino. As the name states, it's read-only; however, it actually has 100,000 read/write cycles before it becomes unstable and unusable. For our intents and purposes, this is plenty, as we are only writing 2 per launch(one at the beginning to clear the memory, another at the end to write the highest Altitude). However, a downside is that we only have 1KB of memory(Arduino Nano; Varies from model to model). This means we cant data log the whole flight, only the most important info. This is where the Micro SD Card comes in. It allows you to datalog the entire flight(with 4GB+ of storage), however requiring an entirely separate unit, therefore adding very noticeable weight to smaller rockets. (In larger rockets, a couple of grams don't matter as much). So which one to pick?
 
 EEPROM:
 - PROS:
@@ -56,8 +40,24 @@ Micro SD Card
 	- Cash. They cost money to buy.
 
 # Using the Code
-Once you have selected the file you want to use, you must make a small change to it before use(this excludes EEPROM_READ.ino). At the top of each file there is avariable called 'myRealAltitude'. You must edit the file to include your Altitude(in Meters) for accurate results. You can find this data easily using Google Earth or similar tools. For example, if your Altitude before launching is 100m above sealevel, that is what you put in.
 
+## PlatformIO (reccomended)
+
+1. Download this Repo if you havent done so already
+2. Open PlatformIO and press `Import Project`
+3. Select your board type and then select the Repo folder
+4. Open `src/Altimeter.ino` and change the settings at the top
+5. Run the script like you normally would (All dependancies are automatically downloaded)
+
+## Arduino IDE
+
+1. Download this Repo if you havent done so already
+2. Download all external dependancies, and place them in your library folder
+	- [MS5611](https://github.com/jarzebski/Arduino-MS5611)
+	- [I2Cdev-Core](https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/I2Cdev)
+	- [MPU6050](https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050)
+3. Open `src/Altimeter.ino` in a new sketch and change the settings at the top
+4. Run the sketch
 
 # Wiring
 
