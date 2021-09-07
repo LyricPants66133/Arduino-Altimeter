@@ -1,50 +1,52 @@
-// EDIT TO LAUNCH SITE ALTITUDE (in meters)
-double myRealAltitude = 0;
+// EDIT TO LAUNCH SITE ALTITUDE (in meters)(Only required for absolute altitude readings)
+const double launchAltitude = 0;
 
 // EDIT DEPENDING ON WHAT SENSORS ARE BEING USED (true or false)
-bool useMS5611 = false;	 // Can be stored in EEPROM & SD card
-bool useMPU6050 = false; // Can ONLY be stored in SD Card
+const bool useMS5611 = true;	 // Can be stored in EEPROM & SD card
+const bool useMPU6050 = false; // Can ONLY be stored in SD Card
 
 // EDIT DEPENDING ON WHAT STORAGE TYPE IS BEING USED (true or false)
-bool useEEPROM = false;
-bool useSD = false;
+const bool useEEPROM = true; // Only one of these should be used at the same time
+const bool useSD = false;
 
 // START OF PROGRAM
 #include <Arduino.h>
+#include <Math.h>
 #include <Wire.h>
 #include <MS5611.h>
 MS5611 ms5611;
-long realPressure, seaLevelPressure, maxAltPressure;
-double realTemperature, maxAltTemperature;
-double absoluteAltitude, relativeAltitude;
-double maxAltitude = 0;
-long millisMaxAlt;
+long initialPressure;
+double initialTemperature;
 
 #include <I2Cdev.h>
 #include <MPU6050.h>
 MPU6050 accelgyro;
-int16_t ax, ay, az; // Define acceleration
-int16_t gx, gy, gz; // Define rotation(gyroscope)
 
 #include <EEPROM.h>
 bool EEPROMLock = false;
-int EEPROMLength = EEPROM.length();
 
 #include <SPI.h>
 #include <SD.h>
-const int chipSelect = 4; // Defines the CS (chip select) pin
+const int chipSelect = 10; // Defines the CS (chip select) pin
+
+struct MaxData {
+	unsigned long millis;
+	double temperature;
+	long pressure;
+	double altitude;
+};
 
 void setup()
 {
 	Serial.begin(9600); // PlatformIO default speed
+	
 
 	if (useMS5611) // Initialize MS5611 sensor
 	{
 		Serial.println("Initializing MS5611 Sensor...");
 		Serial.println(ms5611.begin(MS5611_ULTRA_HIGH_RES) ? "MS5611 connection successful" : "MS5611 connection failed");
-
-		// Calculate sealevel pressure
-		seaLevelPressure = ms5611.getSeaLevel(ms5611.readPressure(), myRealAltitude);
+		initialTemperature = ms5611.readTemperature();
+		initialPressure = ms5611.readPressure();
 	}
 
 	if (useMPU6050) // Initialize MPU6050 sensor
@@ -57,31 +59,36 @@ void setup()
 	if (useSD) // Initialize SD Card
 	{
 		Serial.print("Initializing SD card...");
-		Serial.println(!SD.begin(chipSelect) ? "SD Card connection successful" : "SD Card connection failed");
+		Serial.println(SD.begin(chipSelect) ? "SD Card connection successful" : "SD Card connection failed");
 	}
-
-	if (useEEPROM)
+	
+	if (useEEPROM) // Read and clear EEPROM
 	{
 		Serial.println("The previous text saved in the EEPROM was: ");
+		MaxData EEPROMMaxData;
+		EEPROM.get(0, EEPROMMaxData);
 
-		for (int i = 0; i < EEPROMLength; i++) // Read EEPROM
-		{
-			Serial.write(EEPROM.read(i));
-		}
-
-		for (int i = 0; i < EEPROMLength; i++) // Clear EEPROM
-		{
-			EEPROM.write(i, atoi("*"));
-		}
+		Serial.println( "Read custom object from EEPROM: ");
+		Serial.println( EEPROMMaxData.millis);
+		Serial.println( EEPROMMaxData.temperature);
+		Serial.println( EEPROMMaxData.pressure);
+		Serial.println( EEPROMMaxData.altitude);
 	}
 }
 
 void loop()
 {
-	String data = "";
+	static MaxData maxAlt = {0,0,0,0};
+	long realPressure;
+	double realTemperature;
+	double absoluteAltitude, relativeAltitude;
+
+	int16_t ax, ay, az; // Define acceleration
+	int16_t gx, gy, gz; // Define rotation(gyroscope)
 
 	Serial.print(millis());
 
+	//DATA COLLECTION
 	if (useMS5611) // Reads MS5611 data
 	{
 		// Read true temperature & Pressure
@@ -89,20 +96,15 @@ void loop()
 		realPressure = ms5611.readPressure();
 
 		// Calculate altitude
-		absoluteAltitude = ms5611.getAltitude(realPressure, seaLevelPressure);
-		relativeAltitude = absoluteAltitude - myRealAltitude;
+		relativeAltitude = calculateAltitude(initialPressure, initialTemperature, realPressure, realTemperature);
+		absoluteAltitude = relativeAltitude + launchAltitude;
 
-		Serial.print(", realPressure: " + String(realPressure) + "Pa");
-		Serial.print(", realTemp: " + String(realTemperature) + "*C");
-		Serial.print(", absoluteAltitude: " + String(absoluteAltitude) + "m");
-		Serial.print(", relativeAltitude: " + String(relativeAltitude) + "m");
+		SerialprintMS5611(millis(), realTemperature, realPressure, absoluteAltitude, relativeAltitude);
 
-		if (maxAltitude < relativeAltitude) // Set Maximum Values
+		if (maxAlt.altitude < relativeAltitude) // Set Maximum Values
 		{
-			millisMaxAlt = millis();
-			maxAltTemperature = realTemperature;
-			maxAltPressure = realPressure;
-			maxAltitude = relativeAltitude;
+			Serial.print(" - New Max Altitude reached");
+			maxAlt = {millis(), realTemperature, realPressure, relativeAltitude};
 		}
 	}
 
@@ -110,36 +112,27 @@ void loop()
 	{
 		// read raw accel/gyro measurements from device
 		accelgyro.getMotion6(&gx, &gy, &gz, &ax, &ay, &az);
-		Serial.println(", gx: " + String(gx) + ", gy: " + String(gy) + ", gz: " + String(gz) + ", ax: " + String(ax) + ", ay: " + String(ay) + ", az: " + String(az));
+		SerialprintMPU6050(millis(), gx, gy, gz, ax, ay, az);
 	}
-
+ 
 	if (useSD) // Writes data from MS5611 & MPU6050 to SD Card
 	{
 		if (useMS5611)
 		{
-			data = String(millis()) + ", " + String(realTemperature) + ", " + String(realPressure) + ", " + String(absoluteAltitude) + ", " + String(relativeAltitude);
-		}
-
-		if (useMS5611 && useMPU6050) // add an extra comma if both sensors are being used
-		{
-			data += ", ";
+			SDprintMS5611(millis(), realTemperature, realPressure, absoluteAltitude, relativeAltitude);
 		}
 
 		if (useMPU6050)
 		{
-			data += String(ax) + ", " + String(ay) + ", " + String(az) + ", " + String(gx) + ", " + String(gy) + ", " + String(gz);
+			SDprintMPU6050(millis(), gx, gy, gz, ax, ay, az);
 		}
-
-		SD_Write(data);
 	}
 
 	if (useEEPROM) // Only writes MS5611 data at highest altitude to EEPROM
 	{
-
-		if (EEPROMLock == 0 && millis() >= 120000 && abs(relativeAltitude) < 10) // if nothing has been written before ; if after 120 seconds ; if within 10 meters of starting height.
+		if (EEPROMLock == false && millis() >= 10000/*120000*/ && abs(relativeAltitude) < 10) // if nothing has been written before && if after 120 seconds && if within 10 meters of starting height.
 		{
-			data = String(millisMaxAlt) + "," + String(maxAltPressure) + "," + String(maxAltTemperature) + "," + String(maxAltitude);
-			EEPROM_Write(data);
+			EEPROMwriteMS5611(maxAlt);
 		}
 	}
 
@@ -148,31 +141,102 @@ void loop()
 	delay(100);
 }
 
-void EEPROM_Write(String data)
+
+double calculateAltitude(long lowerPressure, double lowerTemperature, long higherPressure, double higherTemperature) // pressure in pascals, temperature in celcius
 {
-	byte len = data.length(); // Get length of data
+	// Uses the hypsometric equation. Information here: https://glossary.ametsoc.org/wiki/Hypsometric_equation
 
-	for (int i = 0; i < len || i < EEPROMLength; i++) // write up to string length or EEPROM size(shouldnt ever hit this point, but good precatution)
-	{
-		EEPROM.write(i, data[i]);
-	}
+	double p1 = lowerPressure;
+	double p2 = higherPressure;
+	double t1 = 273.15 + lowerTemperature;	// conversion to kelvin
+	double t2 = 273.15 + higherTemperature;	// conversion to kelvin
 
-	Serial.println("--- DATA HAS BEEN WRITTEN TO EEPROM ---");
-	Serial.println("--- " + data + "---");
-	EEPROMLock = true; // 'lock' the EEPROM so that it cant be written over
+	double rv1 = (0.622 * EULER) / (p1 - EULER); // mixing ratio : https://glossary.ametsoc.org/wiki/Mixing_ratio
+	double rv2 = (0.622 * EULER) / (p2 - EULER); // mixing ratio : https://glossary.ametsoc.org/wiki/Mixing_ratio
+
+	double Tv1 = (1 + 0.61 * rv1) * t1;	// approximate virtual temperature : https://glossary.ametsoc.org/wiki/Virtual_temperature
+	double Tv2 = (1 + 0.61 * rv2) * t2;	// approximate virtual temperature : https://glossary.ametsoc.org/wiki/Virtual_temperature
+	double M_Tv = (Tv1 + Tv2) / 2;		// mean virtual temperature in kelvins [K] : https://glossary.ametsoc.org/wiki/Virtual_temperature
+
+	double Rd = 287.058; // specific gas constant for dry air [J/(kg⋅K)]: https://en.wikipedia.org/wiki/Gas_constant
+	double g = 9.80665;	 // gravitational acceleration [m/s2] : https://en.wikipedia.org/wiki/Standard_gravity
+
+	double h = (Rd * M_Tv / g) * log(p1 / p2); // hypsometric equation : https://glossary.ametsoc.org/wiki/Hypsometric_equation
+
+	return h;
 }
 
-void SD_Write(String data)
+void SerialprintMS5611(long time, double rT, long rP, double aA, double rA)
+{
+	Serial.print(", Real Temperature: ");
+	Serial.print(rT);	Serial.print(", Real Pressure: ");
+	Serial.print(rP);	Serial.print(", Absolute Altitude: ");
+	Serial.print(aA);	Serial.print(", Relative Altitude: ");
+	Serial.print(rA);
+}
+
+void SerialprintMPU6050(long time, int16_t gx, int16_t gy, int16_t gz, int16_t ax, int16_t ay, int16_t az)
+{
+	Serial.print(", gx: ");
+	Serial.print(gx);	Serial.print(", gy: ");
+	Serial.print(gy);	Serial.print(", gz: ");
+	Serial.print(gz);	Serial.print(", ax: ");
+	Serial.print(ax);	Serial.print(", ay: ");
+	Serial.print(ay);	Serial.print(", az: ");
+	Serial.print(az);
+	
+	
+}
+
+void SDprintMS5611(long time, double rT, long rP, double aA, double rA)
 {
 	File dataFile = SD.open("datalog.txt", FILE_WRITE);
 
 	if (dataFile)
 	{ // if the file is available, write to it:
-		dataFile.println(data);
-		dataFile.close();
+		dataFile.print("\n");
+		dataFile.print(time);	dataFile.print(",");
+		dataFile.print(rT);		dataFile.print(",");
+		dataFile.print(rP);		dataFile.print(",");
+		dataFile.print(aA);		dataFile.print(",");
+		dataFile.print(rA);		dataFile.close();
 	}
-	else
-	{ // if the file isn't open, pop up an error:
-		Serial.println("error opening datalog.txt");
+	else // if the file isn't open, pop up an error:
+	{
+		Serial.println("error opening data file");
 	}
+}
+
+void SDprintMPU6050(long time, int16_t gx, int16_t gy, int16_t gz, int16_t ax, int16_t ay, int16_t az)
+{
+	File dataFile = SD.open("datalog.txt", FILE_WRITE);
+
+	if (dataFile)
+	{ // if the file is available, write to it:
+		if (!useMS5611) {
+			dataFile.print("\n");
+			Serial.print(time);
+		} 
+
+		dataFile.print(",");
+		dataFile.print(ax);	dataFile.print(",");
+		dataFile.print(ay);	dataFile.print(",");
+		dataFile.print(az);	dataFile.print(",");
+		dataFile.print(gx);	dataFile.print(",");
+		dataFile.print(gy);	dataFile.print(",");
+		dataFile.print(gz);	dataFile.close();
+	}
+	else // if the file isn't open, pop up an error:
+	{
+		Serial.println("error opening data file");
+	}
+}
+
+void EEPROMwriteMS5611(MaxData maxAlt) 
+{
+	int i = 0;
+	EEPROM.put(i, maxAlt);
+
+	Serial.println("\n--- DATA HAS BEEN WRITTEN TO EEPROM ---");
+	EEPROMLock = true; // stops arduino from writing again. This is to avoid memory degradation.
 }
