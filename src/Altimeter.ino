@@ -6,8 +6,8 @@ const bool useMS5611 = true;	 // Can be stored in EEPROM & SD card
 const bool useMPU6050 = false; // Can ONLY be stored in SD Card
 
 // EDIT DEPENDING ON WHAT STORAGE TYPE IS BEING USED (true or false)
-const bool useEEPROM = true; // Only one of these should be used at the same time
-const bool useSD = false;
+const bool useEEPROM = false; // Only one of these should be used at the same time
+const bool useSD = true;
 
 // START OF PROGRAM
 #include <Arduino.h>
@@ -130,7 +130,7 @@ void loop()
 
 	if (useEEPROM) // Only writes MS5611 data at highest altitude to EEPROM
 	{
-		if (EEPROMLock == false && millis() >= 10000/*120000*/ && abs(relativeAltitude) < 10) // if nothing has been written before && if after 120 seconds && if within 10 meters of starting height.
+		if (EEPROMLock == false && millis() >= 120000 && abs(relativeAltitude) < 10) // if nothing has been written before && if after 120 seconds && if within 10 meters of starting height.
 		{
 			EEPROMwriteMS5611(maxAlt);
 		}

@@ -41,7 +41,7 @@ Micro SD Card
 
 # Using the Code
 
-## PlatformIO (reccomended)
+## VSCode - PlatformIO (reccomended)
 
 1. Download this Repo if you havent done so already
 2. Open PlatformIO and press `Import Project`

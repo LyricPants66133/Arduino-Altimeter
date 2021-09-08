@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+# CHANGE FILE LOCATION FOR YOUR FILE
 dataList = np.genfromtxt('test/example.csv', delimiter=',', skip_header=1, usecols=(0, 1, 2, 3, 4))
 
 # Data for plotting
