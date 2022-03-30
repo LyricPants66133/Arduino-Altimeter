@@ -3,24 +3,18 @@ const double launchAltitude = 0;
 
 // EDIT DEPENDING ON WHAT SENSORS ARE BEING USED (true or false)
 const bool useMS5611 = true;	 // Can be stored in EEPROM & SD card
-const bool useMPU6050 = false; // Can ONLY be stored in SD Card
 
 // EDIT DEPENDING ON WHAT STORAGE TYPE IS BEING USED (true or false)
 const bool useEEPROM = false; // Only one of these should be used at the same time
-const bool useSD = true;
+const bool useSD = false;
 
 // START OF PROGRAM
 #include <Arduino.h>
-#include <Math.h>
 #include <Wire.h>
 #include <MS5611.h>
-MS5611 ms5611;
+MS5611 ms5611(0x77);
 long initialPressure;
 double initialTemperature;
-
-#include <I2Cdev.h>
-#include <MPU6050.h>
-MPU6050 accelgyro;
 
 #include <EEPROM.h>
 bool EEPROMLock = false;
@@ -38,22 +32,23 @@ struct MaxData {
 
 void setup()
 {
-	Serial.begin(9600); // PlatformIO default speed
-	
+	Serial.begin(115200); // PlatformIO default speed
 
 	if (useMS5611) // Initialize MS5611 sensor
 	{
 		Serial.println("Initializing MS5611 Sensor...");
-		Serial.println(ms5611.begin(MS5611_ULTRA_HIGH_RES) ? "MS5611 connection successful" : "MS5611 connection failed");
-		initialTemperature = ms5611.readTemperature();
-		initialPressure = ms5611.readPressure();
-	}
+		Serial.println(ms5611.begin() ? "MS5611 connection successful" : "MS5611 connection failed");
+		ms5611.setOversampling(OSR_ULTRA_HIGH);
 
-	if (useMPU6050) // Initialize MPU6050 sensor
-	{
-		Serial.println("Initializing MPU6050 sensor...");
-		accelgyro.initialize();
-		Serial.println(!accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+		int result = ms5611.read();
+		if (result != MS5611_READ_OK)
+		{
+			Serial.print("Error in read: ");
+			Serial.println(result);
+		} else {
+			initialTemperature = ms5611.getTemperature();
+			initialPressure = ms5611.getPressure()*100;
+		}
 	}
 
 	if (useSD) // Initialize SD Card
@@ -83,17 +78,16 @@ void loop()
 	double realTemperature;
 	double absoluteAltitude, relativeAltitude;
 
-	int16_t ax, ay, az; // Define acceleration
-	int16_t gx, gy, gz; // Define rotation(gyroscope)
-
+	delay(100);
 	Serial.print(millis());
 
 	//DATA COLLECTION
 	if (useMS5611) // Reads MS5611 data
 	{
 		// Read true temperature & Pressure
-		realTemperature = ms5611.readTemperature();
-		realPressure = ms5611.readPressure();
+		ms5611.read(OSR_ULTRA_HIGH);
+		realTemperature = ms5611.getTemperature();
+		realPressure = ms5611.getPressure()*100;
 
 		// Calculate altitude
 		relativeAltitude = calculateAltitude(initialPressure, initialTemperature, realPressure, realTemperature);
@@ -108,12 +102,6 @@ void loop()
 		}
 	}
 
-	if (useMPU6050) // Reads MPU5060 data
-	{
-		// read raw accel/gyro measurements from device
-		accelgyro.getMotion6(&gx, &gy, &gz, &ax, &ay, &az);
-		SerialprintMPU6050(millis(), gx, gy, gz, ax, ay, az);
-	}
  
 	if (useSD) // Writes data from MS5611 & MPU6050 to SD Card
 	{
@@ -122,10 +110,6 @@ void loop()
 			SDprintMS5611(millis(), realTemperature, realPressure, absoluteAltitude, relativeAltitude);
 		}
 
-		if (useMPU6050)
-		{
-			SDprintMPU6050(millis(), gx, gy, gz, ax, ay, az);
-		}
 	}
 
 	if (useEEPROM) // Only writes MS5611 data at highest altitude to EEPROM
@@ -168,24 +152,12 @@ double calculateAltitude(long lowerPressure, double lowerTemperature, long highe
 
 void SerialprintMS5611(long time, double rT, long rP, double aA, double rA)
 {
-	Serial.print(", Real Temperature: ");
-	Serial.print(rT);	Serial.print(", Real Pressure: ");
-	Serial.print(rP);	Serial.print(", Absolute Altitude: ");
-	Serial.print(aA);	Serial.print(", Relative Altitude: ");
-	Serial.print(rA);
-}
-
-void SerialprintMPU6050(long time, int16_t gx, int16_t gy, int16_t gz, int16_t ax, int16_t ay, int16_t az)
-{
-	Serial.print(", gx: ");
-	Serial.print(gx);	Serial.print(", gy: ");
-	Serial.print(gy);	Serial.print(", gz: ");
-	Serial.print(gz);	Serial.print(", ax: ");
-	Serial.print(ax);	Serial.print(", ay: ");
-	Serial.print(ay);	Serial.print(", az: ");
-	Serial.print(az);
-	
-	
+	Serial.print(", Real Temperature: ");	Serial.print(rT);
+	Serial.print(", Real Pressure: ");		Serial.print(rP);
+	Serial.print(", Absolute Altitude: ");	Serial.print(aA);
+	if (launchAltitude) {
+		Serial.print(", Relative Altitude: ");	Serial.print(rA);
+	}
 }
 
 void SDprintMS5611(long time, double rT, long rP, double aA, double rA)
@@ -200,31 +172,6 @@ void SDprintMS5611(long time, double rT, long rP, double aA, double rA)
 		dataFile.print(rP);		dataFile.print(",");
 		dataFile.print(aA);		dataFile.print(",");
 		dataFile.print(rA);		dataFile.close();
-	}
-	else // if the file isn't open, pop up an error:
-	{
-		Serial.println("error opening data file");
-	}
-}
-
-void SDprintMPU6050(long time, int16_t gx, int16_t gy, int16_t gz, int16_t ax, int16_t ay, int16_t az)
-{
-	File dataFile = SD.open("datalog.txt", FILE_WRITE);
-
-	if (dataFile)
-	{ // if the file is available, write to it:
-		if (!useMS5611) {
-			dataFile.print("\n");
-			Serial.print(time);
-		} 
-
-		dataFile.print(",");
-		dataFile.print(ax);	dataFile.print(",");
-		dataFile.print(ay);	dataFile.print(",");
-		dataFile.print(az);	dataFile.print(",");
-		dataFile.print(gx);	dataFile.print(",");
-		dataFile.print(gy);	dataFile.print(",");
-		dataFile.print(gz);	dataFile.close();
 	}
 	else // if the file isn't open, pop up an error:
 	{
