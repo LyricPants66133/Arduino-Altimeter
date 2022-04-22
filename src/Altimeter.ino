@@ -1,12 +1,12 @@
 // EDIT TO LAUNCH SITE ALTITUDE (in meters)(Only required for absolute altitude readings)
 const double launchAltitude = 0;
 
-// EDIT DEPENDING ON WHAT SENSORS ARE BEING USED (true or false)
-const bool useMS5611 = true; // Can be stored in EEPROM & SD card
-
 // EDIT DEPENDING ON WHAT STORAGE TYPE IS BEING USED (true or false)
-const bool useEEPROM = false; // Only one of these should be used at the same time
-const bool useSD = false;
+const bool useInternalEEPROM = false; // Only records Max data due to memory limitations
+const int internalEEPROMSize = 1024;  // Must provide internal eeprom size(328p has 1kb or 1024b)
+const bool useExternalEEPROM = true;  // Records everything. will stop recording once end of memory is reached.
+                                      // If smaller memory in use or longer flight time, increase loop delay(will measure data & write less often)
+const int loopDelay = 500;
 
 // START OF PROGRAM
 #include <Arduino.h>
@@ -19,111 +19,139 @@ double initialTemperature;
 #include <EEPROM.h>
 bool EEPROMLock = false;
 
-#include <SPI.h>
-#include <SD.h>
-const int chipSelect = 10; // Defines the CS (chip select) pin
+#include <I2C_eeprom.h>
+I2C_eeprom i2cEEPROM(0x50, I2C_DEVICESIZE_24LC512); // 0x50 if all address pins pulled low(gnd)
+uint32_t i2cEEPROMSize, i2cEEPROMLoc;
 
-struct MaxData
+struct flightData
 {
-  unsigned long millis;
+  unsigned long time;
   double temperature;
   long pressure;
   double altitude;
-};
+} flightData;
 
 void setup()
 {
-  Serial.begin(115200); // PlatformIO default speed
+  Serial.begin(115200); // PlatformIO default speed (still declared as such in plorformio.ini file)
+  Serial.println("Program Starting...");
 
-  if (useMS5611) // Initialize MS5611 sensor
+  if (useInternalEEPROM) // nothing really has to be done here
   {
-    Serial.println("Initializing MS5611 Sensor...");
-    Serial.println(ms5611.begin() ? "MS5611 connection successful" : "MS5611 connection failed");
-    ms5611.setOversampling(OSR_ULTRA_HIGH);
+    double oldMaxAlt;
+    EEPROM.get(1, oldMaxAlt);
 
-    int result = ms5611.read();
-    if (result != MS5611_READ_OK)
-    {
-      Serial.print("Error in read: ");
-      Serial.println(result);
-    }
-    else
-    {
-      initialTemperature = ms5611.getTemperature();
-      initialPressure = ms5611.getPressure() * 100;
-    }
+    Serial.print("previous flight data from EEPROM: ");
+    Serial.print(oldMaxAlt, 3);
+    Serial.println("m");
   }
 
-  if (useSD) // Initialize SD Card
+  if (useExternalEEPROM)
   {
-    Serial.print("Initializing SD card...");
-    Serial.println(SD.begin(chipSelect) ? "SD Card connection successful" : "SD Card connection failed");
+    i2cEEPROM.begin();
+    if (!i2cEEPROM.isConnected())
+    {
+      Serial.println("ERROR: Can't find external eeprom...");
+      Serial.println("Program Stopped");
+      while (1); // loop forever
+    }
+
+    delay(10);
+
+    i2cEEPROMSize = i2cEEPROM.determineSize(false);
+    Serial.println("EXTERNAL EEPROM:");
+    Serial.print("SIZE: ");
+    Serial.print(i2cEEPROMSize / 1024);
+    Serial.println(" KB.");
+    Serial.print(i2cEEPROMSize);
+    Serial.println(" bytes.");
   }
 
-  if (useEEPROM) // Read and clear EEPROM
+  // check if EEPROM is locked
+  if (eepromLocked())
   {
-    Serial.println("The previous text saved in the EEPROM was: ");
-    MaxData EEPROMMaxData;
-    EEPROM.get(0, EEPROMMaxData);
+    Serial.println("EEPROM do not write detected. Printing contents of EEPROM: ");
+    EEPROMLogger(); // will never return from here.
+  }
+  else
+  {
+    // Lock eeprom and continue
+    if (useExternalEEPROM)
+      EEPROM.write(0, 1);
+    if (useExternalEEPROM)
+      i2cEEPROM.writeByte(0, 1);
+  }
+  
+  Serial.println("Initializing MS5611 Sensor...");
+  if (!ms5611.begin())
+  {
+    Serial.println("MS5611 connection failed");
+    while (1); // loop forever
+  }
+  Serial.println("MS5611 connection successful");
 
-    Serial.println("Read custom object from EEPROM: ");
-    Serial.println(EEPROMMaxData.millis);
-    Serial.println(EEPROMMaxData.temperature);
-    Serial.println(EEPROMMaxData.pressure);
-    Serial.println(EEPROMMaxData.altitude);
+  ms5611.setOversampling(OSR_ULTRA_HIGH);
+
+  int result = ms5611.read();
+  if (result != MS5611_READ_OK)
+  {
+    Serial.print("Error in read: ");
+    Serial.println(result);
+  }
+  else
+  {
+    initialTemperature = ms5611.getTemperature();
+    initialPressure = ms5611.getPressure() * 100;
   }
 }
 
 void loop()
 {
-  static MaxData maxAlt = {0, 0, 0, 0};
-  long realPressure;
-  double realTemperature;
-  double absoluteAltitude, relativeAltitude;
+  flightData = {millis(), 0, 0, 0}; // reset values, add millis
+  double maxAlt = 0;
 
-  delay(100);
-  Serial.print(millis());
+  delay(loopDelay);
+  Serial.println("");
+  Serial.print(flightData.time);
 
   // DATA COLLECTION
-  if (useMS5611) // Reads MS5611 data
+  // Read true temperature & Pressure
+  ms5611.read(OSR_ULTRA_HIGH);
+  flightData.temperature = ms5611.getTemperature();
+  flightData.pressure = ms5611.getPressure() * 100;
+
+  // Calculate altitude
+  flightData.altitude = calculateAltitude(initialPressure, initialTemperature, flightData.pressure, flightData.temperature);
+  serialPrintMS5611();
+
+  if (maxAlt < flightData.altitude) // Set Maximum Values
   {
-    // Read true temperature & Pressure
-    ms5611.read(OSR_ULTRA_HIGH);
-    realTemperature = ms5611.getTemperature();
-    realPressure = ms5611.getPressure() * 100;
+    Serial.print(" - New Max Altitude reached");
+    maxAlt = flightData.altitude;
+    /**************** log flight data as max val? or just only maxAlt. Would simplify things. *********************/
+  }
 
-    // Calculate altitude
-    relativeAltitude = calculateAltitude(initialPressure, initialTemperature, realPressure, realTemperature);
-    absoluteAltitude = relativeAltitude + launchAltitude;
-
-    SerialprintMS5611(millis(), realTemperature, realPressure, absoluteAltitude, relativeAltitude);
-
-    if (maxAlt.altitude < relativeAltitude) // Set Maximum Values
+  if (useInternalEEPROM) // Only writes max height
+  {
+    if (EEPROMLock == false && flightData.time >= 120000 && abs(flightData.altitude) < 10) // if nothing has been written before && if after 120 seconds && if within 10 meters of starting height.
     {
-      Serial.print(" - New Max Altitude reached");
-      maxAlt = {millis(), realTemperature, realPressure, relativeAltitude};
+      EEPROM.put(1, maxAlt);
+
+      Serial.println("\n--- DATA HAS BEEN WRITTEN TO INTERNAL EEPROM ---");
+      EEPROMLock = true; // stops arduino from writing again.
     }
   }
 
-  if (useSD) // Writes data from MS5611 & MPU6050 to SD Card
+  if (useExternalEEPROM)
   {
-    if (useMS5611)
+    if (i2cEEPROMLoc < i2cEEPROMSize)
     {
-      SDprintMS5611(millis(), realTemperature, realPressure, absoluteAltitude, relativeAltitude);
+      i2cEEPROM.writeBlock(i2cEEPROMLoc, (uint8_t *)&flightData, sizeof(flightData));
+      i2cEEPROMLoc += sizeof(flightData);
+      Serial.print(", external write: ");
+      Serial.print(i2cEEPROMLoc);
     }
   }
-
-  if (useEEPROM) // Only writes MS5611 data at highest altitude to EEPROM
-  {
-    if (EEPROMLock == false && millis() >= 120000 && abs(relativeAltitude) < 10) // if nothing has been written before && if after 120 seconds && if within 10 meters of starting height.
-    {
-      EEPROMwriteMS5611(maxAlt);
-    }
-  }
-
-  Serial.println("");
-
-  delay(100);
 }
 
 double calculateAltitude(long lowerPressure, double lowerTemperature, long higherPressure, double higherTemperature) // pressure in pascals, temperature in celcius
@@ -150,50 +178,102 @@ double calculateAltitude(long lowerPressure, double lowerTemperature, long highe
   return h;
 }
 
-void SerialprintMS5611(long time, double rT, long rP, double aA, double rA)
+bool eepromLocked()
+{
+  bool lockByte = 0;
+  if (useInternalEEPROM)
+  {
+    EEPROM.get(0, lockByte);
+
+    if (lockByte == 1)
+    {
+      EEPROMLock = true;
+    }
+  }
+
+  lockByte = 0;
+  if (useExternalEEPROM)
+  {
+    lockByte = i2cEEPROM.readByte(0);
+
+    if (lockByte == 1)
+    {
+      EEPROMLock = true;
+    }
+  }
+  return EEPROMLock;
+}
+
+void EEPROMLogger()
+{
+  if (useInternalEEPROM)
+  {
+    double maxAlt;
+    EEPROM.get(1, maxAlt);
+
+    Serial.print("Max Alt logged on internal eeprom: ");
+    Serial.print(maxAlt, 3);
+  }
+
+  if (useExternalEEPROM)
+  {
+    Serial.println("External EEPROM flight log: ");
+    for (uint32_t i = 0; i < i2cEEPROMSize; i += sizeof(flightData))
+    {
+      flightData = {0, 0, 0, 0};
+      i2cEEPROM.readBlock(i, (uint8_t *)&flightData, sizeof(flightData));
+      delay(10);
+      Serial.print(flightData.time);
+      Serial.print(",");
+      Serial.print(flightData.temperature);
+      Serial.print(",");
+      Serial.print(flightData.pressure);
+      Serial.print(",");
+      Serial.print(flightData.altitude);
+      Serial.println("");
+    }
+    Serial.println("Done...");
+  }
+
+  int clearEEPROM = -1;
+  do
+  {
+    Serial.println("Unlock EEPROM(s)?(0=no, 1=yes)");
+    while (Serial.available() == 0)
+      ;
+
+    clearEEPROM = Serial.parseInt();
+
+    if (clearEEPROM == 0)
+    {
+      return;
+    }
+    else if (clearEEPROM == 1)
+    {
+      //Unlock EEPROM
+      if (useExternalEEPROM)
+        EEPROM.write(0, 0);
+      if (useExternalEEPROM)
+        i2cEEPROM.writeByte(0, 0);
+
+      Serial.println("EEPROM has been unlocked. Logging will resume on next startup.");
+      Serial.println("Program exiting...");
+      while (1); // loop forever
+    }
+    else
+    {
+      clearEEPROM = -1;
+    }
+
+  } while (clearEEPROM == -1);
+}
+
+void serialPrintMS5611()
 {
   Serial.print(", Real Temperature: ");
-  Serial.print(rT);
+  Serial.print(flightData.temperature);
   Serial.print(", Real Pressure: ");
-  Serial.print(rP);
+  Serial.print(flightData.pressure);
   Serial.print(", Absolute Altitude: ");
-  Serial.print(aA);
-  if (launchAltitude)
-  {
-    Serial.print(", Relative Altitude: ");
-    Serial.print(rA);
-  }
-}
-
-void SDprintMS5611(long time, double rT, long rP, double aA, double rA)
-{
-  File dataFile = SD.open("datalog.txt", FILE_WRITE);
-
-  if (dataFile)
-  { // if the file is available, write to it:
-    dataFile.print("\n");
-    dataFile.print(time);
-    dataFile.print(",");
-    dataFile.print(rT);
-    dataFile.print(",");
-    dataFile.print(rP);
-    dataFile.print(",");
-    dataFile.print(aA);
-    dataFile.print(",");
-    dataFile.print(rA);
-    dataFile.close();
-  }
-  else // if the file isn't open, pop up an error:
-  {
-    Serial.println("error opening data file");
-  }
-}
-
-void EEPROMwriteMS5611(MaxData maxAlt)
-{
-  int i = 0;
-  EEPROM.put(i, maxAlt);
-
-  Serial.println("\n--- DATA HAS BEEN WRITTEN TO EEPROM ---");
-  EEPROMLock = true; // stops arduino from writing again. This is to avoid memory degradation.
+  Serial.print(flightData.altitude);
 }

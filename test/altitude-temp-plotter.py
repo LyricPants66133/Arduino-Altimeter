@@ -1,14 +1,21 @@
+from time import time
 import matplotlib.pyplot as plt
 import numpy as np
 
 # CHANGE FILE LOCATION FOR YOUR FILE
-dataList = np.genfromtxt('test/example.csv', delimiter=',', skip_header=1, usecols=(0, 1, 2, 3, 4))
+dataList = np.genfromtxt('test/altitude.csv', delimiter=',', skip_header=1, usecols=(0, 1, 2, 3))
 
 # Data for plotting
 # https://stackoverflow.com/a/30244543
-timeX = dataList[:, 0:1]
-altitudeY1 = dataList[:, 4:5]
-temperatureY2= dataList[:, 1:2]
+timeX = dataList[:, 0]
+altitudeY1 = dataList[:, 3]
+temperatureY2= dataList[:, 1]
+
+# change time from millis to seconds 
+# https://numpy.org/doc/stable/reference/arrays.nditer.html#modifying-array-values
+with np.nditer(timeX, op_flags=['readwrite']) as time:
+   for t in time:
+       t[...] = t/1000
 
 # Make lines
 fig, ax1 = plt.subplots()
