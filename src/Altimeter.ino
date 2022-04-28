@@ -33,6 +33,7 @@ struct flightData
 
 void setup()
 {
+  pinMode(LED_BUILTIN, OUTPUT);
   Serial.begin(115200); // PlatformIO default speed (still declared as such in plorformio.ini file)
   Serial.println("Program Starting...");
 
@@ -110,7 +111,10 @@ void loop()
   flightData = {millis(), 0, 0, 0}; // reset values, add millis
   double maxAlt = 0;
 
+  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
   delay(loopDelay);
+  digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+
   Serial.println("");
   Serial.print(flightData.time);
 
